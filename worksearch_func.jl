@@ -51,10 +51,13 @@ function wage_eq(para, Kl, rents, hhs, hl, firms, fl, offers_guess, prices, orde
     maxdiff = 1e+6
     offers = offers_guess
 
+    # while loop to obtain optimal firm offers (wage equilibrium)
     while (maxdiff > it_tols[2]) & (iter < it_tols[1] + 1)
         iter += 1
-        # Households rank offers
-
+        # Compile matrix of potential ω's for each household
+        ω_ij = (offers[:,:,1] - γ(para)[hhs,firms]).*offers[:,:,2] - ψ.*offers[:,:,2].^2
+        # If greater than 0, hh's apply to job (i,j)
+        applications = ω_ij .> 0
 
     end # convergence loop
     return offers, Z, matches
@@ -66,7 +69,7 @@ MATRICES:
 rents[1,L] -- rents for each location l
 hhs[1,I] -- locations of each household (0 = outside)
 firms[1,J] -- locations of each firm (0 = not operating)
-offers[J,I,2] -- offers by firm j to household i in form (w,n)
+offers[I,J,2] -- offers by firm j to household i in form (w,n)
 prices[1,J] -- prices of goods by each firm j
 hl[1,L+1] -- distribution of hh's (L+1 = outside)
 fl[1,L+1] -- distribution of firms (L+1 = not operating)
