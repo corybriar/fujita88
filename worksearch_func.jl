@@ -99,9 +99,18 @@ function wage_eq(para, Kl, rents, hhs, hl, firms, fl, offers_guess, prices, orde
 
         """ STOPPING CRITERIA"""
         if
-
+            println("Wage Equilibrium achieved after $iter iterations")
+        # If convergence is not achieved, update offers
         else
+            for j in 1:J
+                for i in 1:I
+                    if (matches[j,i] = 1) & (Ω[j,i] = 1)
+                        
+                    else
 
+                    end # End updating if statement
+                end # i-loop
+            end # j-loop
         end # convergence check
     end # convergence loop
     return offers, Z, matches
