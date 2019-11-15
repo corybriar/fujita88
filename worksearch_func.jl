@@ -8,7 +8,7 @@ using Parameters, Random, Combinatorics
     I::Int64 = 5000     # Number of households
     J::Int64 = 100      # Number of firms
     L::Int64 = 20       # Number of locations
-    σ1::Float64 = 0.5   # Utility parameter
+    σ1::Float64 = 0.9   # Utility parameter
     σ2::Float64 = 0.5   # Utility parameter
     ψ::Float64 = 0.25   # Work distaste parameter
     τ1::Float64 = 0     # Fixed cost of shopping
@@ -16,7 +16,7 @@ using Parameters, Random, Combinatorics
     γ1::Float64 = 0     # Fixed cost of commuting
     γ2::Float64 = 0.5   # Variable cost of commuting
     κ::Float64 = 5      # Non-sunk firm fixed cost
-    α::Float64 = 0.7    # Production function DRTS parameter
+    α::Float64 = 0.7   # Production function DRTS parameter
     φ::Float64 = 0.1    # Wage adjustment increment
     u0::Float64 = 0     # Outside option utility
     λ::Float64 = 0.5    # Marginal cost of land
@@ -43,8 +43,8 @@ function γ(para)
     return commcosts
 end # γ
 
-function wage_eq(para, Kl, hhs, hl, firms, fl, offers_guess, prices, Θ, it_tols)
-    @unpack I, J, L, σ1, σ2, ψ, γ1, γ2, κ, α = para
+function wage_eq(para, Kl, hhs, hl, firms, offers_guess, prices, Θ, it_tols)
+    @unpack I, J, L, σ1, σ2, ψ, γ1, γ2, κ, α, φ = para
     # Calculate firm demands
     Z = σ1*σ2.*exp.(-σ1.*(prices .+ τ(para,firms)))*hl
 
@@ -56,7 +56,7 @@ function wage_eq(para, Kl, hhs, hl, firms, fl, offers_guess, prices, Θ, it_tols
     offers_stor = zeros(J,I,2,Int(it_tols[1])+1)
     offers_stor[:,:,:,1] = offers_guess
     # while loop to obtain optimal firm offers (wage equilibrium)
-    while (maxdiff > it_tols[2]) & (iter < it_tols[1] + 1)
+    while (maxdiff > it_tols[2]) & (iter < it_tols[1])
         iter += 1
         # Compile matrix of potential ω's for each household
         ω_ij = (offers[:,:,1] - γ(para)[firms,hhs]).*offers[:,:,2] - ψ.*offers[:,:,2].^2
@@ -64,53 +64,66 @@ function wage_eq(para, Kl, hhs, hl, firms, fl, offers_guess, prices, Θ, it_tols
         applications = ω_ij .> 0
         # Firms choose which hh's to hire
         Ωhj = zeros(J,I)
+        # Find required labor impacts
+        Nj = (Z./Kl[firms]).^(1/α)
         for j in 1:J
             # Find households that applied to j
-            Ωaj = zeros(0)
+            Ωaj = []
             for i in 1:I
                 if applications[j,i] == true
                     append!(Ωaj, Int(i))
                 end # appending if statement
             end # i-loop
-            # Find required labor
-            Nj = (Z[j]/Kl[firms[j]])^(1/α)
+
             # Find all possible combinations of hires
-            all_plans = vcat([collect(combinations(1:size(Ωaj)[2],i)) for i=1:size(Ωaj)[2]]...)
-            # Find plans that produce at least Nj
-            Nj_costs = zeros(0)
-            for x in 1:size(all_plans)[2]
-                # If output of plan x >= Nj, append cost to Nj_costs
-                if sum(Θ[all_plans[x]].*log.(offers[all_plans[x],j,2])) >= N_j
-                    append!(Nj_costs, sum(offers[all_plans[x],j,1].*offers[all_plans[x],j,2]))
-                end
-            end # x-loop
-            # Search for minimum cost plan among Nj_plans
-            if size(Nj_costs)[1] > 0
-                plan_j = findmin(Nj_costs)[1]
-                # Make offers
-                Ωhj[j,plan_j] .= 1
+            println("$j")
+            if size(Ωaj)[1] > 0
+                # Take 10 most productive households for j
+                all_plans = []
+                if size(Ωaj)[1] > 10
+                    all_plans = collect(combinations(sortperm(Ωaj)[(size(Ωaj)[1] -9):end]))
+                else
+                    allplans = collect(combinations(Ωaj))
+                end # size of Ωaj check
+
+                # Find plans that produce at least Nj
+                Nj_costs = []
+                for x in 1:size(all_plans)[1]
+                    # If output of plan x >= Nj, append cost to Nj_costs
+                    if sum(Θ[all_plans[x]].*log.(offers[j,all_plans[x],2])) >= Nj[j]
+                        push!(Nj_costs, sum(offers[j,all_plans[x],1].*offers[j,all_plans[x],2]))
+                    end
+                end # x-loop
+                # Search for minimum cost plan among Nj_plans
+                if size(Nj_costs)[1] > 0
+                    plan_j = findmin(Nj_costs)[2]
+                    # Make offers
+                    Ωhj[j,all_plans[plan_j]] .= 1
+                end # end Nj_plans size check
             end # size check
         end # j-loop
 
         # Households accept best offer
         matches = zeros(J,I)
-        hire_offers = transpose(ω_ij) .* Ωhj
+        hire_offers = abs.(ω_ij .* Ωhj)
         for i in 1:I
-            matches[findmax(hire_offers[:,i]),i] = 1
+            if findmax(hire_offers[:,i])[2] > 0
+                matches[findmax(hire_offers[:,i])[2],i] = 1
+            end
         end # i-loop
 
         # Create vector to store households matched to each j
-        Ω_star = zeros(0)
+        Ω_star = []
         for j in 1:J
-            Ω_star[j] = findall(i -> i>0,matches[j,:])
+            push!(Ω_star, findall(i -> i == 1,matches[j,:]))
         end # j-loop
 
         # Update offers
         for j in 1:J
             for i in 1:I
-                if (matches[j,i] = 1) & (Ωhj[j,i] = 1)
+                if (matches[j,i] == 1) & (Ωhj[j,i] == 1)
                     # Set optimal offer
-                    offers[j,i,2] = exp((N_j[j] - sum(Θ[j,Ω_star[j]].*log.(Θ[j,Ω_star[j]].*offers[j,i,1]./Θ[j,i].*offers[j,:,1])))/sum(Θ[j,Ω_star[j]]))
+                    offers[j,i,2] = exp((Nj[j] - sum(Θ[j,Ω_star[j]].*log.(Θ[j,Ω_star[j]].*offers[j,i,1]./Θ[j,i].*offers[j,Ω_star[j],1])))/sum(Θ[j,Ω_star[j]]))
                 else
                     offers[j,i,1] += φ
                 end # End updating if statement
@@ -123,13 +136,14 @@ function wage_eq(para, Kl, hhs, hl, firms, fl, offers_guess, prices, Θ, it_tols
         # If convergence is not achieved, update offers
         else
             # Store matches/offers from this iteration
+            println("Iteration: $iter")
             matches_stor[:,:,iter+1] = matches
             offers_stor[:,:,:,iter+1] = offers
         end # convergence check
     end # convergence loop
     return offers, Z, matches
 end # wage_eq
-
+wage_eq(para, Kl, hhs, hl, firms, offers_guess, prices, Θ, it_tols)
 
 """
 MATRICES:
@@ -145,3 +159,7 @@ matches[J,I] -- binary matrix matching households to firms; ie if matches[j,i] =
 """
 
 it_tols = [200,1e-5, 200,1e-5, 200,1e-5, 200,1e-5]
+
+offers_guess = zeros(J,I,2)
+offers_guess[:,:,1] .= 21.1
+offers_guess[:,:,2] .= 60
